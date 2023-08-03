@@ -35,7 +35,6 @@
 #define cimg_display 0
 #include "CImg/CImg.h"
 
-#include "drm_func.h"
 #include "rga_func.h"
 #include "rknn_api.h"
 #include "postprocess.h"
@@ -43,38 +42,55 @@
 #define PERF_WITH_POST 1
 
 using namespace cimg_library;
+
 /*-------------------------------------------
                   Functions
 -------------------------------------------*/
 
-inline const char* get_type_string(rknn_tensor_type type)
+inline const char *get_type_string(rknn_tensor_type type)
 {
-    switch(type) {
-    case RKNN_TENSOR_FLOAT32: return "FP32";
-    case RKNN_TENSOR_FLOAT16: return "FP16";
-    case RKNN_TENSOR_INT8: return "INT8";
-    case RKNN_TENSOR_UINT8: return "UINT8";
-    case RKNN_TENSOR_INT16: return "INT16";
-    default: return "UNKNOW";
+    switch (type)
+    {
+    case RKNN_TENSOR_FLOAT32:
+        return "FP32";
+    case RKNN_TENSOR_FLOAT16:
+        return "FP16";
+    case RKNN_TENSOR_INT8:
+        return "INT8";
+    case RKNN_TENSOR_UINT8:
+        return "UINT8";
+    case RKNN_TENSOR_INT16:
+        return "INT16";
+    default:
+        return "UNKNOW";
     }
 }
 
-inline const char* get_qnt_type_string(rknn_tensor_qnt_type type)
+inline const char *get_qnt_type_string(rknn_tensor_qnt_type type)
 {
-    switch(type) {
-    case RKNN_TENSOR_QNT_NONE: return "NONE";
-    case RKNN_TENSOR_QNT_DFP: return "DFP";
-    case RKNN_TENSOR_QNT_AFFINE_ASYMMETRIC: return "AFFINE";
-    default: return "UNKNOW";
+    switch (type)
+    {
+    case RKNN_TENSOR_QNT_NONE:
+        return "NONE";
+    case RKNN_TENSOR_QNT_DFP:
+        return "DFP";
+    case RKNN_TENSOR_QNT_AFFINE_ASYMMETRIC:
+        return "AFFINE";
+    default:
+        return "UNKNOW";
     }
 }
 
-inline const char* get_format_string(rknn_tensor_format fmt)
+inline const char *get_format_string(rknn_tensor_format fmt)
 {
-    switch(fmt) {
-    case RKNN_TENSOR_NCHW: return "NCHW";
-    case RKNN_TENSOR_NHWC: return "NHWC";
-    default: return "UNKNOW";
+    switch (fmt)
+    {
+    case RKNN_TENSOR_NCHW:
+        return "NCHW";
+    case RKNN_TENSOR_NHWC:
+        return "NHWC";
+    default:
+        return "UNKNOW";
     }
 }
 
@@ -194,6 +210,7 @@ static unsigned char *load_image(const char *image_path, int *org_height, int *o
     return image_data;
 }
 
+
 /*-------------------------------------------
                   Main Functions
 -------------------------------------------*/
@@ -202,46 +219,39 @@ int main(int argc, char **argv)
     int status = 0;
     char *model_name = NULL;
     rknn_context ctx;
-    void *drm_buf = NULL;
-    int drm_fd = -1;
-    int buf_fd = -1; // converted from buffer handle
-    unsigned int handle;
-    size_t actual_size = 0;
     int img_width = 0;
     int img_height = 0;
     int img_channel = 0;
     rga_context rga_ctx;
-    drm_context drm_ctx;
     const float nms_threshold = NMS_THRESH;
     const float box_conf_threshold = BOX_THRESH;
     struct timeval start_time, stop_time;
     int ret;
+
     memset(&rga_ctx, 0, sizeof(rga_context));
-    memset(&drm_ctx, 0, sizeof(drm_context));
 
     if (argc != 3)
     {
-        printf("Usage: %s <rknn model> <bmp> \n", argv[0]);
+        printf("Usage: %s <rknn model> <bmp>\n", argv[0]);
         return -1;
     }
 
     printf("post process config: box_conf_threshold = %.2f, nms_threshold = %.2f\n",
            box_conf_threshold, nms_threshold);
-
     model_name = (char *)argv[1];
     char *image_name = argv[2];
 
-    if (strstr(image_name, ".jpg") != NULL || strstr(image_name, ".png") != NULL)
-    {
-        printf("Error: read %s failed! only support .bmp format image\n",image_name);
-        return -1;
-    }
+    // if (strstr(image_name, ".jpg") != NULL || strstr(image_name, ".png") != NULL)
+    // {
+    //     printf("Error: read %s failed! only support .bmp format image\n", image_name);
+    //     return -1;
+    // }
 
     /* Create the neural network */
     printf("Loading mode...\n");
     int model_data_size = 0;
     unsigned char *model_data = load_model(model_name, &model_data_size);
-    ret = rknn_init(&ctx, model_data, model_data_size, RKNN_FLAG_PRIOR_MEDIUM|RKNN_FLAG_ASYNC_MASK);
+    ret = rknn_init(&ctx, model_data, model_data_size, RKNN_FLAG_PRIOR_MEDIUM | RKNN_FLAG_ASYNC_MASK);
     if (ret < 0)
     {
         printf("rknn_init error ret=%d\n", ret);
@@ -349,7 +359,7 @@ int main(int argc, char **argv)
     inputs[0].size = width * height * channel;
     inputs[0].fmt = RKNN_TENSOR_NHWC;
     inputs[0].pass_through = 0;
-    inputs[0].buf = (void *)resize_buf;
+    inputs[0].buf = resize_buf;
 
     gettimeofday(&start_time, NULL);
     rknn_inputs_set(ctx, io_num.n_input, inputs);
@@ -379,8 +389,10 @@ int main(int argc, char **argv)
         out_scales.push_back(output_attrs[i].scale);
         out_zps.push_back(output_attrs[i].zp);
     }
+
     post_process((uint8_t *)outputs[0].buf, (uint8_t *)outputs[1].buf, (uint8_t *)outputs[2].buf, height, width,
-                 box_conf_threshold, nms_threshold, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
+                box_conf_threshold, nms_threshold, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
+
 
     // Draw Objects
     char text[256];
@@ -403,23 +415,25 @@ int main(int argc, char **argv)
         img.draw_text(x1, y1 - 12, text, white);
     }
     img.save("./out.bmp");
+
     ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
 
     // loop test
-    int test_count = 10;
+    int test_count = 100;
     gettimeofday(&start_time, NULL);
+
     for (int i = 0; i < test_count; ++i)
     {
-        // img_resize_slow(&rga_ctx, drm_buf, img_width, img_height, resize_buf, width, height);
         rknn_inputs_set(ctx, io_num.n_input, inputs);
         ret = rknn_run(ctx, NULL);
         ret = rknn_outputs_get(ctx, io_num.n_output, outputs, NULL);
 #if PERF_WITH_POST
         post_process((uint8_t *)outputs[0].buf, (uint8_t *)outputs[1].buf, (uint8_t *)outputs[2].buf, height, width,
-                     box_conf_threshold, nms_threshold, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
+                        box_conf_threshold, nms_threshold, scale_w, scale_h, out_zps, out_scales, &detect_result_group);
 #endif
         ret = rknn_outputs_release(ctx, io_num.n_output, outputs);
     }
+
     gettimeofday(&stop_time, NULL);
     printf("loop count = %d , average run  %f ms\n", test_count,
            (__get_us(stop_time) - __get_us(start_time)) / 1000.0 / test_count);

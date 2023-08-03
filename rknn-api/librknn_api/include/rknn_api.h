@@ -21,7 +21,7 @@ extern "C" {
 #include <stdint.h>
 
 /* RKNN API Version */
-#define API_VERSION                             "1.7.3"
+#define API_VERSION                             "1.7.5"
 
 /*
     Definition of extended flag for rknn_init.

@@ -1,125 +1,84 @@
 # Yolo-v5 demo
 
-## 导出rknn模型
+## Model souce
 
-### 使用官方onnx模型
+The original model used in this demo is yolov5s_relu.pt, which is included in the convert_rknn_demo/yolov5/models directory. Compared to the original version, some post-processing has been removed from the model and moved to the outside for better inference performance. The silu activation function has been replaced with relu. For more information on creating a YOLOv5 model without post-processing, please refer to [https://github.com/airockchip/yolov5/blob/master/README_rkopt_manual.md. ↗](https://github.com/airockchip/yolov5/blob/master/README_rkopt_manual.md)
 
-1. 使用yolov5官方仓库导出模型，链接：https://github.com/ultralytics/yolov5, 该demo创建时yolov5的最新节点sha码为: c5360f6e7009eb4d05f14d1cc9dae0963e949213
+For more information about other YOLO models, please refer to [https://github.com/airockchip/rknn_model_zoo/tree/main/models/CV/object_detection/yolo. ↗](https://github.com/airockchip/rknn_model_zoo/tree/main/models/CV/object_detection/yolo)
 
-2. 在yolov5工程的根目录下导出已训练好的yolov5模型，如yolov5s.onnx.
 
-   ```sh
-   python export.py --weights yolov5s.pt --img 640 --batch 1 --opset 12
-   ```
 
-   注：yolov5工程需要使用pytorch 1.8.0 或 1.9.0 版本才能正常导出。
+## Convert model to RKNN
 
-3. 使用onnx-simplifier工具优化yolov5的onnx模型,安装和优化命令如下:
+You can use the convert_rknn_demo/yolov5/models/pytorch2rknn.py script to get the RKNN model. The following special parameters can be specified during conversion:
 
-   ```sh
-   ## 如果已安装onnx-simplifier,跳过这句
-   pip install onnx-simplifier 
-   
-   python -m onnxsim yolov5s.onnx  yolov5s.onnx
-   ```
+- Set output_optimize to 1 to reduce the time it takes for the capi normal inference interface rknn_outputs_get. (conflicts with zero-copy, cannot be used together)
+- When force_builtin_perm is set to True, the generated model input changed to nhwc instead of nchw, which is more suitable for image input. (Most images are in hwc format)
 
-### 运行python推理
 
-1. rknn-toolkit提供了一个转好的yolov5s.onnx，如果从yolov5官网重新导出了优化的onnx模型, 则进入rknn-toolkit目录，将导出的onnx模型复制到examples/onnx/yolov5目录下yolov5s.onnx，再执行命令:
+## Notice
 
-   ```sh
-   cd examples/onnx/yolov5
-   python test.py
-   ```
+1. Use rknn-toolkit version 1.7.0 or higher.
+2. This demo only supports inference of rknn models with 8-bit asymmetric quantization.
+3. When switching to your own trained model, please pay attention to aligning post-processing parameters such as anchor, otherwise it may cause post-processing parsing errors.
+4. The official yolov5 website and rk pre-trained models detect 80 classes of targets. If you are using your own trained model, modify the OBJ_CLASS_NUM and NMS_THRESH post-processing parameters in include/postprocess.h before compiling.
+5. Due to hardware limitations, the post-processing part of the yolov5 model is moved to the CPU for this demo's model by default. The models included in this demo use relu as the activation function. Compared with the silu activation function, the accuracy is slightly reduced, but the inference speed is faster.
+6. Regarding loading time: the models in the model directory are pre-compiled rknn models, which load faster than non-pre-compiled rknn models. The conversion script in the convert_rknn_demo directory generates non-pre-compiled rknn models. If you need to re-generate pre-compiled rknn models, please refer to [example of export rknn pre-compile model](https://github.com/rockchip-linux/rknn-toolkit/tree/master/examples/common_function_demos/export_rknn_precompile_model).
 
-### 使用rk预训练模型
 
-由于官方的yolov5s模型中包含了Slice层/Swish层/大kernel_size的MaxPooling层，NPU执行效率不高。我们建议开发者使用NPU友好的算子替换官网的结构，下面给出两个参考网络结构：
+## build
 
-1. 改进结构1
+- for Linux:  
+modify `GCC_COMPILER` on `build_linux.sh` for target platform, then execute  
 
-```txt
-a. 将Focus层改成Conv层
-b. 将Swish激活函数改成Relu激活函数
+```
+./build_linux.sh
 ```
 
-我们Demo中提供了一个高性能版本的rknn模型：`model/yolov5s-640-640.rknn`。对应的onnx模型是`convert_rknn_demo/yolov5/onnx_models/yolov5s_rm_transpose.onnx`，该模型是预测80类coco数据集的yolov5s改进结构，将Slice层训练和导出onnx模型过程请参考https://github.com/airockchip/yolov5.git
+- for Android:  
+modify `ANDROID_NDK_PATH` on `build_android.sh` to your NDK path, then execute  
 
-转换rknn模型的步骤如下：
-
-```sh
-cd convert_rknn_demo/yolov5/
-python onnx2rknn.py
+```
+./build_android.sh
 ```
 
-2. 改进结构2
+## install
 
-```txt
-a. 将Focus层改成Conv层
-b. 将Swish激活函数改成Relu激活函数
-c. 将大kernel_size的MaxPooling改成3x3 MaxPooling Stack结构
+connect device and push build output into `/userdata`  
+
 ```
-
-训练和导出onnx模型过程请参考请参考https://github.com/EASY-EAI/yolov5
-
-## 注意事项：
-
-1. 使用rknn-toolkit版本大于等于1.7.0。
-
-2. 本Demo只支持8比特非对称量化的rknn模型推理。
-
-3. 切换成自己训练的模型时，请注意对齐anchor等后处理参数，否则会导致后处理解析出错。
-
-4. 官网和rk预训练模型都是检测80类的目标，如果自己训练的模型,自行更改include/postprocess.h中的OBJ_CLASS_NUM以及NMS_THRESH,BOX_THRESH后处理参数后再编译。
-
-5. 测试代码导出模型的时候指定了输出节点['378', '439', '500']，分别为原模型的第2、3、4输出节点的去掉 三个Reshape 后面的层（不包含Reshape层），
-对应输出的shape是[1,255,80,80],[1,255,40,40],[1,255,20,20]。
-对于自己训练的模型输出节点的顺序和shape的要求必须是[1,？,80,80]，[1,？,40,40]，[1,？,20,20]，C代码后处理才能正确处理。
-
-6. 关于加载时间：model目录下均是预编译rknn模型，加载速度比非预编译rknn模型快。convert_rknn_demo目录下的转换脚本生成非预编译rknn模型，如需重新生成预编译rknn模型，请参考rknn-toolkit的User Guide.
-
-
-## Aarch64 Linux Demo
-
-### 编译
-
-根据指定平台修改`build_linux.sh`中的交叉编译器所在目录的路径`GCC_COMPILER`，例如修改成
-
-```sh
-GCC_COMPILER=~/opt/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf
-```
-
-然后执行：
-
-```sh
-./build.sh
-```
-
-如果是Android平台，修改`build_android.sh`中的NDK路径，例如修改成
-
-```sh
-ANDROID_NDK_PATH=~/tools/android-ndk-r17c/
-```
-
-### 推送执行文件到板子
-
-连接板子的usb口到PC,将整个demo目录到`/userdata`:
-
-```sh
 # for Linux
-adb push install/rknn_yolov5_demo_Linux /userdata/
+adb push install/rknn_ssd_demo_Linux /userdata/
 # for Android
-adb push install/rknn_yolov5_demo_Android /userdata/
+adb push install/rknn_ssd_demo_Android /userdata/
 ```
 
-## 运行
+*Note: for Android, you may need execute command below to get write premissions for file system.*  
 
-```sh
+```
+adb root
+adb remount
+```
+
+## run
+
+```
 adb shell
-cd /userdata/rknn_yolov5_demo_Linux/
-```
-
-
-```sh
+cd /userdata/rknn_ssd_demo_Linux/
 ./run_demo.sh
 ```
+
+## Expected results
+
+## Expected results
+
+The test result should be similar to picutre `ref_detect_result.bmp`.  
+Reference labels, coordinates, and scores:
+```
+person @ (208 246 287 505) 0.867932
+person @ (481 240 560 525) 0.860113
+person @ (109 234 231 536) 0.860113
+bus @ (90 126 553 464) 0.562063
+```
+
+- Different platforms, different versions of tools and drivers may have slightly different results.
